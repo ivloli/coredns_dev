@@ -65,7 +65,7 @@ func (e *ECSNormalizer) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *d
 	}
 
 	province, isp := parseRegion(regionStr)
-	log.Debugf("[%s] ip2region result: %s → province=%s isp=%s", qname, clientIP, province, isp)
+	log.Infof("[%s] client=%s → province=%s isp=%s", qname, clientIP, province, isp)
 	if province == "" || isp == "" {
 		// Overseas or unknown — passthrough without ECS injection.
 		log.Debugf("[%s] unknown region, passthrough", qname)
@@ -94,7 +94,7 @@ func (e *ECSNormalizer) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *d
 		return plugin.NextOrFailure(e.Name(), e.Next, ctx, w, r)
 	}
 	subnet := subnetVal.(string)
-	log.Debugf("[%s] injecting ECS subnet=%s (province=%s isp=%s)", qname, subnet, province, isp)
+	log.Infof("[%s] ECS injected: client=%s province=%s isp=%s → subnet=%s", qname, clientIP, province, isp, subnet)
 
 	// 5. Clone request and inject ECS.
 	rClone := r.Copy()

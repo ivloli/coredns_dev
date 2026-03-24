@@ -3,6 +3,7 @@ package ecs_normalizer
 import (
 	"net"
 	"strings"
+	"unicode"
 
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
@@ -92,14 +93,22 @@ func normalizeProvince(s string) string {
 }
 
 // normalizeISP strips "中国" and "云" prefixes/substrings.
+// Returns "" for unknown values (e.g. "0", "CN", pure-ASCII codes that are
+// country/region codes rather than real ISP names).
 func normalizeISP(s string) string {
 	s = strings.ReplaceAll(s, "中国", "")
 	s = strings.ReplaceAll(s, "云", "")
 	s = strings.TrimSpace(s)
-	if s == "0" {
+	if s == "0" || s == "" {
 		return ""
 	}
-	return s
+	// If no Chinese character remains, it's a region code (e.g. "CN"), not a real ISP.
+	for _, r := range s {
+		if unicode.Is(unicode.Han, r) {
+			return s
+		}
+	}
+	return ""
 }
 
 // getMinTTL returns the minimum TTL across all answer records, or 0 if no answers.

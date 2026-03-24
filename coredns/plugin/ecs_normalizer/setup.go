@@ -45,6 +45,7 @@ func setup(c *caddy.Controller) error {
 	if err != nil {
 		return plugin.Error("ecs_normalizer", fmt.Errorf("init searcher: %w", err))
 	}
+	log.Infof("ip2region xdb loaded: %s (%d bytes)", cfg.IP2RegionXDB, len(cBuff))
 
 	// Ristretto in-memory DNS response cache (province|isp|qname|qtype → response).
 	cache, err := ristretto.NewCache(&ristretto.Config{
@@ -70,6 +71,8 @@ func setup(c *caddy.Controller) error {
 		return plugin.Error("ecs_normalizer", fmt.Errorf("load subnet map from nacos: %w", err))
 	}
 	e.startNacosListener(nacosClient)
+	log.Infof("ecs_normalizer ready: nacos=%s ns=%q group=%s data_id=%s prefix_len=/%d",
+		cfg.NacosAddr, cfg.NacosNamespace, cfg.NacosGroup, cfg.NacosDataID, cfg.PrefixLength)
 
 	dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
 		e.Next = next
