@@ -3,7 +3,6 @@ package ecs_normalizer
 import (
 	"net"
 	"strings"
-	"unicode"
 
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
@@ -67,17 +66,16 @@ func injectECS(r *dns.Msg, cidr string, prefixLength uint8) error {
 }
 
 // parseRegion parses ip2region SearchByStr result and returns normalized keys.
-// Input:  "中国|0|广东省|广州市|中国电信"  (or "电信" — XDB may already strip "中国")
+// Input format: "国家|省份|城市|运营商|地区码"
+// e.g. "中国|广东省|广州市|中国电信|CN"
 // Output: ("广东", "电信")
-// Normalization matches builder.NormalizeProvince / builder.NormalizeISP so that
-// the plugin's lookup key always agrees with what subnet-manager wrote to Nacos.
 func parseRegion(regionStr string) (province, isp string) {
 	parts := strings.Split(regionStr, "|")
-	if len(parts) < 5 {
+	if len(parts) < 4 {
 		return
 	}
-	province = normalizeProvince(strings.TrimSpace(parts[2]))
-	isp = normalizeISP(strings.TrimSpace(parts[4]))
+	province = normalizeProvince(strings.TrimSpace(parts[1]))
+	isp = normalizeISP(strings.TrimSpace(parts[3]))
 	return
 }
 
@@ -92,23 +90,16 @@ func normalizeProvince(s string) string {
 	return s
 }
 
-// normalizeISP strips "中国" and "云" prefixes/substrings.
-// Returns "" for unknown values (e.g. "0", "CN", pure-ASCII codes that are
-// country/region codes rather than real ISP names).
+// normalizeISP strips "中国" and "云" — identical to subnet-manager's NormalizeISP
+// so that Nacos keys written by subnet-manager always match lookups here.
 func normalizeISP(s string) string {
 	s = strings.ReplaceAll(s, "中国", "")
 	s = strings.ReplaceAll(s, "云", "")
 	s = strings.TrimSpace(s)
-	if s == "0" || s == "" {
+	if s == "0" {
 		return ""
 	}
-	// If no Chinese character remains, it's a region code (e.g. "CN"), not a real ISP.
-	for _, r := range s {
-		if unicode.Is(unicode.Han, r) {
-			return s
-		}
-	}
-	return ""
+	return s
 }
 
 // getMinTTL returns the minimum TTL across all answer records, or 0 if no answers.
