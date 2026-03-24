@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -55,7 +56,12 @@ func (w *VersionWatcher) Start() {
 }
 
 func (w *VersionWatcher) checkAndUpdate() error {
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // 跳过证书验证，适配有 TLS 拦截的网络环境
+		},
+	}
 
 	// 1. Fetch latest GitHub release tag.
 	latestTag, err := w.fetchLatestTag(httpClient)
