@@ -20,8 +20,8 @@ import (
 
 const (
 	githubReleasesURL = "https://api.github.com/repos/lionsoul2014/ip2region/releases/latest"
-	txtDownloadURL    = "https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ipv4_source.txt"
-	xdbDownloadURL    = "https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ip2region_v4.xdb"
+	txtDownloadURL    = "https://raw.githubusercontent.com/lionsoul2014/ip2region/main/data/ipv4_source.txt"
+	xdbDownloadURL    = "https://raw.githubusercontent.com/lionsoul2014/ip2region/main/data/ip2region_v4.xdb"
 )
 
 // VersionWatcher polls the ip2region GitHub release tag.
