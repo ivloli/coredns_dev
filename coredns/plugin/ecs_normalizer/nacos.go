@@ -33,6 +33,8 @@ func newNacosClient(cfg *Config) (config_client.IConfigClient, error) {
 		constant.WithLogDir("/tmp/nacos/log"),
 		constant.WithCacheDir("/tmp/nacos/cache"),
 		constant.WithLogLevel("warn"),
+		constant.WithUsername(cfg.NacosUsername),
+		constant.WithPassword(cfg.NacosPassword),
 	)
 	return clients.NewConfigClient(vo.NacosClientParam{
 		ClientConfig:  &cc,

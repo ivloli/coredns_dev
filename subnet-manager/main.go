@@ -41,6 +41,8 @@ func main() {
 		constant.WithLogDir("/tmp/nacos/log"),
 		constant.WithCacheDir("/tmp/nacos/cache"),
 		constant.WithLogLevel("warn"),
+		constant.WithUsername(cfg.Nacos.Username),
+		constant.WithPassword(cfg.Nacos.Password),
 	)
 	nacosClient, err := clients.NewConfigClient(vo.NacosClientParam{
 		ClientConfig:  &cc,

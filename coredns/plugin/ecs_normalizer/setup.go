@@ -20,12 +20,14 @@ func init() {
 
 // Config holds Corefile options for the ecs_normalizer plugin.
 type Config struct {
-	IP2RegionXDB   string
-	NacosAddr      string
-	NacosNamespace string
-	NacosGroup     string
-	NacosDataID    string
-	PrefixLength   uint8
+	IP2RegionXDB    string
+	NacosAddr       string
+	NacosNamespace  string
+	NacosGroup      string
+	NacosDataID     string
+	NacosUsername   string
+	NacosPassword   string
+	PrefixLength    uint8
 }
 
 func setup(c *caddy.Controller) error {
@@ -110,6 +112,16 @@ func parseConfig(c *caddy.Controller) (*Config, error) {
 					return nil, c.ArgErr()
 				}
 				cfg.NacosDataID = c.Val()
+			case "nacos_username":
+				if !c.NextArg() {
+					return nil, c.ArgErr()
+				}
+				cfg.NacosUsername = c.Val()
+			case "nacos_password":
+				if !c.NextArg() {
+					return nil, c.ArgErr()
+				}
+				cfg.NacosPassword = c.Val()
 			case "prefix_length":
 				if !c.NextArg() {
 					return nil, c.ArgErr()

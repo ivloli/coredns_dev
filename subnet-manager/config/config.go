@@ -19,6 +19,8 @@ type NacosConfig struct {
 	Namespace string `yaml:"namespace"`
 	Group     string `yaml:"group"`
 	DataID    string `yaml:"data_id"`
+	Username  string `yaml:"username"`
+	Password  string `yaml:"password"`
 }
 
 type IP2RegionConfig struct {
