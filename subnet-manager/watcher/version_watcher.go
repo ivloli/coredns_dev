@@ -9,10 +9,8 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
@@ -41,21 +39,7 @@ type githubRelease struct {
 }
 
 // Start checks once on startup, then polls on PollInterval. Blocks forever.
-// Send SIGUSR1 to the process to trigger an immediate Nacos sync without
-// version check or download (useful when files are uploaded manually).
 func (w *VersionWatcher) Start() {
-	// SIGUSR1 → force sync
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGUSR1)
-	go func() {
-		for range sigCh {
-			log.Printf("[watcher] received SIGUSR1, forcing nacos sync...")
-			if err := w.forceSync(); err != nil {
-				log.Printf("[watcher] force sync failed: %v", err)
-			}
-		}
-	}()
-
 	if err := w.checkAndUpdate(); err != nil {
 		log.Printf("[watcher] startup check failed: %v", err)
 	}
@@ -68,27 +52,11 @@ func (w *VersionWatcher) Start() {
 	}
 }
 
-// forceSync skips version check and download, runs Nacos sync directly.
-func (w *VersionWatcher) forceSync() error {
-	s := &syncer.Syncer{
-		NacosClient: w.NacosClient,
-		NacosGroup:  w.NacosGroup,
-		NacosDataID: w.NacosDataID,
-		TXTPath:     w.TXTPath,
-		XDBPath:     w.XDBPath,
-	}
-	if err := s.Sync(); err != nil {
-		return fmt.Errorf("sync nacos: %w", err)
-	}
-	log.Printf("[watcher] force sync complete")
-	return nil
-}
-
 func (w *VersionWatcher) checkAndUpdate() error {
 	httpClient := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // 跳过证书验证，适配有 TLS 拦截的网络环境
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
 	}
 
@@ -98,8 +66,23 @@ func (w *VersionWatcher) checkAndUpdate() error {
 		return fmt.Errorf("fetch latest tag: %w", err)
 	}
 
-	// 2. Compare with locally persisted version.
+	// 2. Check local version.
 	localTag := w.readLocalVersion()
+
+	// manual 模式：跳过下载，直接用现有文件同步 Nacos，版本号保持 manual 不变。
+	if localTag == "manual" {
+		log.Printf("[watcher] manual mode, latest upstream=%s, syncing nacos with existing files...", latestTag)
+		if _, err := os.Stat(w.TXTPath); os.IsNotExist(err) {
+			log.Printf("[watcher] manual mode: %s not found, skipping sync", w.TXTPath)
+			return nil
+		}
+		if _, err := os.Stat(w.XDBPath); os.IsNotExist(err) {
+			log.Printf("[watcher] manual mode: %s not found, skipping sync", w.XDBPath)
+			return nil
+		}
+		return w.runSync()
+	}
+
 	if localTag == latestTag {
 		log.Printf("[watcher] already at latest (%s), nothing to do", latestTag)
 		return nil
@@ -116,6 +99,19 @@ func (w *VersionWatcher) checkAndUpdate() error {
 	log.Printf("[watcher] files downloaded")
 
 	// 4. Sync updated data to Nacos.
+	if err := w.runSync(); err != nil {
+		return err
+	}
+
+	// 5. Persist version only after full success (guarantees idempotency on retry).
+	if err := w.writeLocalVersion(latestTag); err != nil {
+		log.Printf("[watcher] warning: write local version failed: %v", err)
+	}
+	log.Printf("[watcher] update complete, current version: %s", latestTag)
+	return nil
+}
+
+func (w *VersionWatcher) runSync() error {
 	s := &syncer.Syncer{
 		NacosClient: w.NacosClient,
 		NacosGroup:  w.NacosGroup,
@@ -126,12 +122,6 @@ func (w *VersionWatcher) checkAndUpdate() error {
 	if err := s.Sync(); err != nil {
 		return fmt.Errorf("sync nacos: %w", err)
 	}
-
-	// 5. Persist version only after full success (guarantees idempotency on retry).
-	if err := w.writeLocalVersion(latestTag); err != nil {
-		log.Printf("[watcher] warning: write local version failed: %v", err)
-	}
-	log.Printf("[watcher] update complete, current version: %s", latestTag)
 	return nil
 }
 
