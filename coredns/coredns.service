@@ -1,0 +1,19 @@
+[Unit]
+Description=CoreDNS with ECS Normalizer
+Documentation=https://coredns.io
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/coredns -conf /etc/coredns/Corefile
+WorkingDirectory=/etc/coredns
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=coredns
+
+[Install]
+WantedBy=multi-user.target

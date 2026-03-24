@@ -1,0 +1,18 @@
+[Unit]
+Description=CoreDNS Subnet Manager (ip2region → Nacos sync)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/subnet-manager -config /etc/subnet-manager/config.yaml
+WorkingDirectory=/var/lib/subnet-manager
+Restart=on-failure
+RestartSec=10s
+EnvironmentFile=-/etc/subnet-manager/env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=subnet-manager
+
+[Install]
+WantedBy=multi-user.target

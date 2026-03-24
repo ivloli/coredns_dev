@@ -1,0 +1,16 @@
+nacos:
+  addr:      "nacos:8848"       # host:port of Nacos server
+  namespace: "coredns"          # Nacos namespace
+  group:     "subnet_mapping"   # Nacos config group
+  data_id:   "subnet_map"       # Nacos config data ID
+
+ip2region:
+  dir:           "/data/ip2region"                          # local data directory (stores .version file)
+  txt_path:      "/data/ip2region/ipv4_source.txt"         # downloaded from GitHub
+  xdb_path:      "/data/ip2region/ip2region_v4.xdb"        # downloaded from GitHub
+  poll_interval: "1h"                                      # how often to check GitHub for a new release
+  github_token:  "${GITHUB_TOKEN}"                         # optional; avoids anonymous API rate limit (60 req/h)
+
+api:
+  listen: ":9090"
+  token:  "${SUBNET_MANAGER_API_TOKEN}"

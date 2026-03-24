@@ -1,0 +1,17 @@
+nacos:
+  addr:      "localhost:8848"
+  # namespace 不填 = Nacos 默认 public 命名空间，本地开发无需在 Nacos 控制台建命名空间
+  namespace: ""
+  group:     "subnet_mapping"
+  data_id:   "subnet_map"
+
+ip2region:
+  dir:           "data/ip2region"                           # 存放 .version 文件，相对于运行目录（项目根）
+  txt_path:      "data/ip2region/ipv4_source.txt"
+  xdb_path:      "data/ip2region/ip2region_v4.xdb"
+  poll_interval: "1h"
+  github_token:  "${GITHUB_TOKEN}"                          # 可选；不设则匿名限速 60次/小时
+
+api:
+  listen: ":9090"
+  token:  ""

@@ -1,0 +1,16 @@
+nacos:
+  addr:      "localhost:8848"
+  namespace: ""              # public 命名空间；生产可改为具体 namespace ID
+  group:     "subnet_mapping"
+  data_id:   "subnet_map"
+
+ip2region:
+  dir:           "/var/lib/subnet-manager/ip2region"
+  txt_path:      "/var/lib/subnet-manager/ip2region/ipv4_source.txt"
+  xdb_path:      "/var/lib/subnet-manager/ip2region/ip2region_v4.xdb"
+  poll_interval: "1h"
+  github_token:  "${GITHUB_TOKEN}"   # 从 /etc/subnet-manager/env 注入
+
+api:
+  listen: ":9090"
+  token:  "${SUBNET_MANAGER_API_TOKEN}"

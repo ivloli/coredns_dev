@@ -1,0 +1,17 @@
+. {
+    ecs_normalizer {
+        ip2region_db  /var/lib/subnet-manager/ip2region/ip2region_v4.xdb
+        nacos_addr    localhost:8848
+        nacos_group   subnet_mapping
+        nacos_data_id subnet_map
+        prefix_length 24
+    }
+
+    forward . 10.0.0.1:53 {
+        force_tcp
+    }
+
+    prometheus :9153
+    log
+    errors
+}

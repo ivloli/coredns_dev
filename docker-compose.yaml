@@ -1,0 +1,54 @@
+services:
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: nacos
+    environment:
+      - MODE=standalone
+      - NACOS_AUTH_ENABLE=false
+      - JVM_XMS=256m
+      - JVM_XMX=256m
+    ports:
+      - "8848:8848"   # HTTP API
+      - "9848:9848"   # gRPC (nacos-sdk-go v2 required)
+    volumes:
+      - nacos_data:/home/nacos/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8848/nacos/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # Optional: coredns (built locally via `make build-coredns`)
+  # coredns:
+  #   image: coredns-ecs:latest
+  #   build:
+  #     context: coredns
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "53:53/udp"
+  #     - "53:53/tcp"
+  #     - "9153:9153"   # Prometheus metrics
+  #   volumes:
+  #     - ./coredns/Corefile.example:/etc/coredns/Corefile:ro
+  #     - ip2region_data:/data/ip2region:ro
+  #   depends_on:
+  #     nacos:
+  #       condition: service_healthy
+
+  # Optional: subnet-manager (built locally via `make build-subnet-manager`)
+  # subnet-manager:
+  #   image: subnet-manager:latest
+  #   build:
+  #     context: subnet-manager
+  #     dockerfile: Dockerfile
+  #   volumes:
+  #     - ./subnet-manager/config.yaml:/etc/subnet-manager/config.yaml:ro
+  #     - ip2region_data:/data/ip2region
+  #   depends_on:
+  #     nacos:
+  #       condition: service_healthy
+
+volumes:
+  nacos_data:
+  ip2region_data:
