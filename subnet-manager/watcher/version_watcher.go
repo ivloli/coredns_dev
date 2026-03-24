@@ -9,8 +9,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/nacos-group/nacos-sdk-go/v2/clients/config_client"
@@ -39,7 +41,21 @@ type githubRelease struct {
 }
 
 // Start checks once on startup, then polls on PollInterval. Blocks forever.
+// Send SIGUSR1 to the process to trigger an immediate Nacos sync without
+// version check or download (useful when files are uploaded manually).
 func (w *VersionWatcher) Start() {
+	// SIGUSR1 → force sync
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGUSR1)
+	go func() {
+		for range sigCh {
+			log.Printf("[watcher] received SIGUSR1, forcing nacos sync...")
+			if err := w.forceSync(); err != nil {
+				log.Printf("[watcher] force sync failed: %v", err)
+			}
+		}
+	}()
+
 	if err := w.checkAndUpdate(); err != nil {
 		log.Printf("[watcher] startup check failed: %v", err)
 	}
@@ -50,6 +66,22 @@ func (w *VersionWatcher) Start() {
 			log.Printf("[watcher] check failed: %v", err)
 		}
 	}
+}
+
+// forceSync skips version check and download, runs Nacos sync directly.
+func (w *VersionWatcher) forceSync() error {
+	s := &syncer.Syncer{
+		NacosClient: w.NacosClient,
+		NacosGroup:  w.NacosGroup,
+		NacosDataID: w.NacosDataID,
+		TXTPath:     w.TXTPath,
+		XDBPath:     w.XDBPath,
+	}
+	if err := s.Sync(); err != nil {
+		return fmt.Errorf("sync nacos: %w", err)
+	}
+	log.Printf("[watcher] force sync complete")
+	return nil
 }
 
 func (w *VersionWatcher) checkAndUpdate() error {
@@ -75,22 +107,13 @@ func (w *VersionWatcher) checkAndUpdate() error {
 	log.Printf("[watcher] version %q → %q, downloading...", localTag, latestTag)
 
 	// 3. Download new files (atomic tmp → rename).
-	// 下载失败时若文件已存在（如手动上传），跳过并继续 Sync；否则报错。
 	if err := downloadFile(httpClient, w.TXTDownURL, w.TXTPath); err != nil {
-		if _, statErr := os.Stat(w.TXTPath); statErr == nil {
-			log.Printf("[watcher] download ipv4_source.txt failed (%v), using existing file", err)
-		} else {
-			return fmt.Errorf("download ipv4_source.txt: %w", err)
-		}
+		return fmt.Errorf("download ipv4_source.txt: %w", err)
 	}
 	if err := downloadFile(httpClient, w.XDBDownURL, w.XDBPath); err != nil {
-		if _, statErr := os.Stat(w.XDBPath); statErr == nil {
-			log.Printf("[watcher] download ip2region_v4.xdb failed (%v), using existing file", err)
-		} else {
-			return fmt.Errorf("download ip2region_v4.xdb: %w", err)
-		}
+		return fmt.Errorf("download ip2region_v4.xdb: %w", err)
 	}
-	log.Printf("[watcher] files ready")
+	log.Printf("[watcher] files downloaded")
 
 	// 4. Sync updated data to Nacos.
 	s := &syncer.Syncer{
