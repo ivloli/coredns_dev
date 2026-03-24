@@ -18,12 +18,6 @@ import (
 	"coredns-dev/subnet-manager/syncer"
 )
 
-const (
-	githubReleasesURL = "https://api.github.com/repos/lionsoul2014/ip2region/releases/latest"
-	txtDownloadURL    = "https://raw.githubusercontent.com/lionsoul2014/ip2region/main/data/ipv4_source.txt"
-	xdbDownloadURL    = "https://raw.githubusercontent.com/lionsoul2014/ip2region/main/data/ip2region_v4.xdb"
-)
-
 // VersionWatcher polls the ip2region GitHub release tag.
 // When the tag changes it downloads the new data files and syncs Nacos.
 type VersionWatcher struct {
@@ -32,6 +26,9 @@ type VersionWatcher struct {
 	VersionFile  string        // persisted local version tag, e.g. /data/ip2region/.version
 	PollInterval time.Duration
 	GithubToken  string // optional; prevents hitting the 60 req/h anonymous limit
+	ReleasesURL  string
+	TXTDownURL   string
+	XDBDownURL   string
 	NacosClient  config_client.IConfigClient
 	NacosGroup   string
 	NacosDataID  string
@@ -78,10 +75,10 @@ func (w *VersionWatcher) checkAndUpdate() error {
 	log.Printf("[watcher] version %q → %q, downloading...", localTag, latestTag)
 
 	// 3. Download new files (atomic tmp → rename).
-	if err := downloadFile(httpClient, txtDownloadURL, w.TXTPath); err != nil {
+	if err := downloadFile(httpClient, w.TXTDownURL, w.TXTPath); err != nil {
 		return fmt.Errorf("download ipv4_source.txt: %w", err)
 	}
-	if err := downloadFile(httpClient, xdbDownloadURL, w.XDBPath); err != nil {
+	if err := downloadFile(httpClient, w.XDBDownURL, w.XDBPath); err != nil {
 		return fmt.Errorf("download ip2region_v4.xdb: %w", err)
 	}
 	log.Printf("[watcher] files downloaded")
@@ -107,7 +104,7 @@ func (w *VersionWatcher) checkAndUpdate() error {
 }
 
 func (w *VersionWatcher) fetchLatestTag(hc *http.Client) (string, error) {
-	req, err := http.NewRequest("GET", githubReleasesURL, nil)
+	req, err := http.NewRequest("GET", w.ReleasesURL, nil)
 	if err != nil {
 		return "", err
 	}

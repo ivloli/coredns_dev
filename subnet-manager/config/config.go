@@ -29,6 +29,9 @@ type IP2RegionConfig struct {
 	XDBPath      string        `yaml:"xdb_path"`
 	PollInterval time.Duration `yaml:"poll_interval"`
 	GithubToken  string        `yaml:"github_token"`
+	ReleasesURL  string        `yaml:"releases_url"`
+	TXTDownURL   string        `yaml:"txt_download_url"`
+	XDBDownURL   string        `yaml:"xdb_download_url"`
 }
 
 type APIConfig struct {
@@ -70,6 +73,15 @@ func (c *Config) validate() error {
 	}
 	if c.IP2Region.PollInterval <= 0 {
 		c.IP2Region.PollInterval = time.Hour
+	}
+	if c.IP2Region.ReleasesURL == "" {
+		c.IP2Region.ReleasesURL = "https://api.github.com/repos/lionsoul2014/ip2region/releases/latest"
+	}
+	if c.IP2Region.TXTDownURL == "" {
+		c.IP2Region.TXTDownURL = "https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ipv4_source.txt"
+	}
+	if c.IP2Region.XDBDownURL == "" {
+		c.IP2Region.XDBDownURL = "https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ip2region_v4.xdb"
 	}
 	return nil
 }
