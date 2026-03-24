@@ -4,7 +4,7 @@
         start stop restart status \
         docker-up docker-down clean tidy
 
-COREDNS_BIN    := bin/coredns
+COREDNS_BIN    := bin/coredns-ecs
 SUBNET_MGR_BIN := bin/subnet-manager
 
 all: build-coredns build-subnet-manager
@@ -22,18 +22,18 @@ tidy:
 	cd subnet-manager && go mod tidy
 
 # ── 安装 CoreDNS ────────────────────────────────────────────
-install-coredns: build-coredns
-	install -m 755 $(COREDNS_BIN) /usr/local/bin/coredns
-	install -d -m 755 /etc/coredns
-	[ -f /etc/coredns/Corefile ] || \
-	    install -m 644 coredns/Corefile.prod /etc/coredns/Corefile
-	install -m 644 coredns/coredns.service /etc/systemd/system/coredns.service
+install-coredns:
+	install -m 755 $(COREDNS_BIN) /usr/local/bin/coredns-ecs
+	install -d -m 755 /etc/coredns-ecs
+	[ -f /etc/coredns-ecs/Corefile ] || \
+	    install -m 644 coredns/Corefile.prod /etc/coredns-ecs/Corefile
+	install -m 644 coredns/coredns-ecs.service /etc/systemd/system/coredns-ecs.service
 	systemctl daemon-reload
-	systemctl enable coredns
-	@echo "CoreDNS 安装完成，请确认 /etc/coredns/Corefile 后执行: systemctl start coredns"
+	systemctl enable coredns-ecs
+	@echo "coredns-ecs 安装完成，请确认 /etc/coredns-ecs/Corefile 后执行: systemctl start coredns-ecs"
 
 # ── 安装 subnet-manager ─────────────────────────────────────
-install-subnet-manager: build-subnet-manager
+install-subnet-manager:
 	install -m 755 $(SUBNET_MGR_BIN) /usr/local/bin/subnet-manager
 	install -d -m 755 /etc/subnet-manager
 	install -d -m 755 /var/lib/subnet-manager/ip2region
@@ -51,9 +51,9 @@ install: install-coredns install-subnet-manager
 
 # ── 卸载（不删除配置和数据目录）───────────────────────────
 uninstall-coredns:
-	systemctl stop coredns 2>/dev/null || true
-	systemctl disable coredns 2>/dev/null || true
-	rm -f /etc/systemd/system/coredns.service /usr/local/bin/coredns
+	systemctl stop coredns-ecs 2>/dev/null || true
+	systemctl disable coredns-ecs 2>/dev/null || true
+	rm -f /etc/systemd/system/coredns-ecs.service /usr/local/bin/coredns-ecs
 	systemctl daemon-reload
 
 uninstall-subnet-manager:
