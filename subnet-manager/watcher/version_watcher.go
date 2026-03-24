@@ -75,13 +75,22 @@ func (w *VersionWatcher) checkAndUpdate() error {
 	log.Printf("[watcher] version %q → %q, downloading...", localTag, latestTag)
 
 	// 3. Download new files (atomic tmp → rename).
+	// 下载失败时若文件已存在（如手动上传），跳过并继续 Sync；否则报错。
 	if err := downloadFile(httpClient, w.TXTDownURL, w.TXTPath); err != nil {
-		return fmt.Errorf("download ipv4_source.txt: %w", err)
+		if _, statErr := os.Stat(w.TXTPath); statErr == nil {
+			log.Printf("[watcher] download ipv4_source.txt failed (%v), using existing file", err)
+		} else {
+			return fmt.Errorf("download ipv4_source.txt: %w", err)
+		}
 	}
 	if err := downloadFile(httpClient, w.XDBDownURL, w.XDBPath); err != nil {
-		return fmt.Errorf("download ip2region_v4.xdb: %w", err)
+		if _, statErr := os.Stat(w.XDBPath); statErr == nil {
+			log.Printf("[watcher] download ip2region_v4.xdb failed (%v), using existing file", err)
+		} else {
+			return fmt.Errorf("download ip2region_v4.xdb: %w", err)
+		}
 	}
-	log.Printf("[watcher] files downloaded")
+	log.Printf("[watcher] files ready")
 
 	// 4. Sync updated data to Nacos.
 	s := &syncer.Syncer{
