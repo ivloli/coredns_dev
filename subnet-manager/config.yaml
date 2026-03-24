@@ -11,6 +11,10 @@ ip2region:
   xdb_path:      "data/ip2region/ip2region_v4.xdb"
   poll_interval: "1h"
   github_token:  "${GITHUB_TOKEN}"                          # 可选；不设则匿名限速 60次/小时
+  # 以下三个地址不填则使用默认值，地址变化时直接改配置重启即可
+  releases_url:     "https://api.github.com/repos/lionsoul2014/ip2region/releases/latest"
+  txt_download_url: "https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ipv4_source.txt"
+  xdb_download_url: "https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ip2region_v4.xdb"
 
 api:
   listen: ":9090"

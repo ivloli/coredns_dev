@@ -48,31 +48,37 @@ func (e *ECSNormalizer) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *d
 		return plugin.NextOrFailure(e.Name(), e.Next, ctx, w, r)
 	}
 
+	qname := r.Question[0].Name
+
 	// 1. Extract client IP (prefer ECS option source address).
 	state := request.Request{W: w, Req: r}
 	clientIP := extractClientIP(state, r)
+	log.Debugf("[%s] client_ip=%s", qname, clientIP)
 
 	// 2. ip2region lookup.
 	e.mu.RLock()
 	regionStr, err := e.searcher.SearchByStr(clientIP)
 	e.mu.RUnlock()
 	if err != nil || regionStr == "" {
+		log.Debugf("[%s] ip2region miss for %s, passthrough", qname, clientIP)
 		return plugin.NextOrFailure(e.Name(), e.Next, ctx, w, r)
 	}
 
 	province, isp := parseRegion(regionStr)
+	log.Debugf("[%s] ip2region result: %s → province=%s isp=%s", qname, clientIP, province, isp)
 	if province == "" || isp == "" {
 		// Overseas or unknown — passthrough without ECS injection.
+		log.Debugf("[%s] unknown region, passthrough", qname)
 		return plugin.NextOrFailure(e.Name(), e.Next, ctx, w, r)
 	}
 
 	// 3. Check DNS response cache.
-	qname := r.Question[0].Name
 	qtype := r.Question[0].Qtype
 	cacheKey := fmt.Sprintf("%s|%s|%s|%d", province, isp, qname, qtype)
 
 	if val, ok := e.dnsCache.Get(cacheKey); ok {
 		if cr, ok := val.(*cachedResponse); ok && time.Now().Before(cr.expiresAt) {
+			log.Debugf("[%s] cache hit (province=%s isp=%s)", qname, province, isp)
 			resp := cr.msg.Copy()
 			resp.Id = r.Id
 			w.WriteMsg(resp)
@@ -84,9 +90,11 @@ func (e *ECSNormalizer) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *d
 	subnetVal, ok := e.subnetMap.Load(province + "|" + isp)
 	if !ok {
 		// No mapping in Nacos yet — passthrough.
+		log.Warningf("[%s] no subnet mapping for province=%s isp=%s, passthrough", qname, province, isp)
 		return plugin.NextOrFailure(e.Name(), e.Next, ctx, w, r)
 	}
 	subnet := subnetVal.(string)
+	log.Debugf("[%s] injecting ECS subnet=%s (province=%s isp=%s)", qname, subnet, province, isp)
 
 	// 5. Clone request and inject ECS.
 	rClone := r.Copy()

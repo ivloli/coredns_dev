@@ -1,15 +1,21 @@
 nacos:
-  addr:      "localhost:8848"
-  namespace: ""              # public 命名空间；生产可改为具体 namespace ID
+  addr:      "172.31.32.200:8848"
+  namespace: ""
   group:     "subnet_mapping"
   data_id:   "subnet_map"
+  username:  "${NACOS_USERNAME}"
+  password:  "${NACOS_PASSWORD}"
 
 ip2region:
   dir:           "/var/lib/subnet-manager/ip2region"
   txt_path:      "/var/lib/subnet-manager/ip2region/ipv4_source.txt"
   xdb_path:      "/var/lib/subnet-manager/ip2region/ip2region_v4.xdb"
   poll_interval: "1h"
-  github_token:  "${GITHUB_TOKEN}"   # 从 /etc/subnet-manager/env 注入
+  github_token:  "${GITHUB_TOKEN}"
+  # 以下三个地址不填则使用默认值，地址变化时直接改配置重启即可
+  releases_url:     "https://api.github.com/repos/lionsoul2014/ip2region/releases/latest"
+  txt_download_url: "https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ipv4_source.txt"
+  xdb_download_url: "https://raw.githubusercontent.com/lionsoul2014/ip2region/master/data/ip2region_v4.xdb"   # 从 /etc/subnet-manager/env 注入
 
 api:
   listen: ":9090"
