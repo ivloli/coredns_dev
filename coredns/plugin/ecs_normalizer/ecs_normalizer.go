@@ -32,7 +32,7 @@ type ECSNormalizer struct {
 	mu       sync.RWMutex
 	searcher *xdb.Searcher // ip2region in-memory searcher (protected by mu)
 
-	subnetMap sync.Map        // "province|isp" → subnet CIDR string
+	subnetMap sync.Map         // "province|isp" → subnet CIDR string
 	dnsCache  *ristretto.Cache // DNS response cache
 }
 
@@ -78,7 +78,7 @@ func (e *ECSNormalizer) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *d
 
 	if val, ok := e.dnsCache.Get(cacheKey); ok {
 		if cr, ok := val.(*cachedResponse); ok && time.Now().Before(cr.expiresAt) {
-			log.Debugf("[%s] cache hit (province=%s isp=%s)", qname, province, isp)
+			log.Infof("[%s] ristretto cache hit: province=%s isp=%s qtype=%d", qname, province, isp, qtype)
 			resp := cr.msg.Copy()
 			resp.Id = r.Id
 			w.WriteMsg(resp)
@@ -119,7 +119,9 @@ func (e *ECSNormalizer) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *d
 					expiresAt: time.Now().Add(time.Duration(ttl) * time.Second),
 				}
 				packed, _ := rec.Msg.Pack()
-				e.dnsCache.Set(cacheKey, cr, int64(len(packed)))
+				if e.dnsCache.Set(cacheKey, cr, int64(len(packed))) {
+					log.Infof("[%s] ristretto cache write: province=%s isp=%s qtype=%d ttl=%d", qname, province, isp, qtype, ttl)
+				}
 			}
 		}
 		w.WriteMsg(rec.Msg)
