@@ -3,6 +3,7 @@ package ecs_normalizer
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
@@ -20,14 +21,15 @@ func init() {
 
 // Config holds Corefile options for the ecs_normalizer plugin.
 type Config struct {
-	IP2RegionXDB    string
-	NacosAddr       string
-	NacosNamespace  string
-	NacosGroup      string
-	NacosDataID     string
-	NacosUsername   string
-	NacosPassword   string
-	PrefixLength    uint8
+	IP2RegionXDB       string
+	NacosAddr          string
+	NacosNamespace     string
+	NacosGroup         string
+	NacosDataID        string
+	NacosUsername      string
+	NacosPassword      string
+	PrefixLength       uint8
+	CachePrefetchAhead time.Duration
 }
 
 func setup(c *caddy.Controller) error {
@@ -49,8 +51,8 @@ func setup(c *caddy.Controller) error {
 
 	// Ristretto in-memory DNS response cache (province|isp|qname|qtype → response).
 	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: 1e5,        // track frequency of 100k keys
-		MaxCost:     100 << 20,  // max 100 MB
+		NumCounters: 1e5,       // track frequency of 100k keys
+		MaxCost:     100 << 20, // max 100 MB
 		BufferItems: 64,
 	})
 	if err != nil {
@@ -71,8 +73,8 @@ func setup(c *caddy.Controller) error {
 		return plugin.Error("ecs_normalizer", fmt.Errorf("load subnet map from nacos: %w", err))
 	}
 	e.startNacosListener(nacosClient)
-	log.Infof("ecs_normalizer ready: nacos=%s ns=%q group=%s data_id=%s prefix_len=/%d",
-		cfg.NacosAddr, cfg.NacosNamespace, cfg.NacosGroup, cfg.NacosDataID, cfg.PrefixLength)
+	log.Infof("ecs_normalizer ready: nacos=%s ns=%q group=%s data_id=%s prefix_len=/%d prefetch_ahead=%s",
+		cfg.NacosAddr, cfg.NacosNamespace, cfg.NacosGroup, cfg.NacosDataID, cfg.PrefixLength, cfg.CachePrefetchAhead)
 
 	dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
 		e.Next = next
@@ -83,9 +85,10 @@ func setup(c *caddy.Controller) error {
 
 func parseConfig(c *caddy.Controller) (*Config, error) {
 	cfg := &Config{
-		NacosGroup:   "subnet_mapping",
-		NacosDataID:  "subnet_map",
-		PrefixLength: 24,
+		NacosGroup:         "subnet_mapping",
+		NacosDataID:        "subnet_map",
+		PrefixLength:       24,
+		CachePrefetchAhead: 5 * time.Second,
 	}
 	for c.Next() {
 		for c.NextBlock() {
@@ -134,6 +137,18 @@ func parseConfig(c *caddy.Controller) (*Config, error) {
 					return nil, fmt.Errorf("invalid prefix_length %q: %w", c.Val(), err)
 				}
 				cfg.PrefixLength = uint8(n)
+			case "cache_prefetch_ahead":
+				if !c.NextArg() {
+					return nil, c.ArgErr()
+				}
+				d, err := time.ParseDuration(c.Val())
+				if err != nil {
+					return nil, fmt.Errorf("invalid cache_prefetch_ahead %q: %w", c.Val(), err)
+				}
+				if d < 0 {
+					return nil, fmt.Errorf("cache_prefetch_ahead must be >= 0")
+				}
+				cfg.CachePrefetchAhead = d
 			default:
 				return nil, c.Errf("unknown option %q", c.Val())
 			}

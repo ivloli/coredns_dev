@@ -3,6 +3,7 @@ package ecs_normalizer
 import (
 	"context"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -32,8 +33,9 @@ type ECSNormalizer struct {
 	mu       sync.RWMutex
 	searcher *xdb.Searcher // ip2region in-memory searcher (protected by mu)
 
-	subnetMap sync.Map         // "province|isp" → subnet CIDR string
-	dnsCache  *ristretto.Cache // DNS response cache
+	subnetMap        sync.Map         // "province|isp" → subnet CIDR string
+	dnsCache         *ristretto.Cache // DNS response cache
+	prefetchInFlight sync.Map         // cacheKey -> struct{} (dedupe prefetch refresh)
 }
 
 type cachedResponse struct {
@@ -52,8 +54,12 @@ func (e *ECSNormalizer) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *d
 
 	// 1. Extract client IP (prefer ECS option source address).
 	state := request.Request{W: w, Req: r}
-	clientIP := extractClientIP(state, r)
-	log.Debugf("[%s] client_ip=%s", qname, clientIP)
+	clientIP, fromECS := extractClientIP(state, r)
+	if fromECS {
+		log.Infof("[%s] client_ip=%s (source=ecs)", qname, clientIP)
+	} else {
+		log.Infof("[%s] client_ip=%s (source=remote, no ecs subnet)", qname, clientIP)
+	}
 
 	// 2. ip2region lookup.
 	e.mu.RLock()
@@ -78,6 +84,16 @@ func (e *ECSNormalizer) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *d
 
 	if val, ok := e.dnsCache.Get(cacheKey); ok {
 		if cr, ok := val.(*cachedResponse); ok && time.Now().Before(cr.expiresAt) {
+			remaining := time.Until(cr.expiresAt)
+			if e.cfg.CachePrefetchAhead > 0 && remaining <= e.cfg.CachePrefetchAhead {
+				if _, loaded := e.prefetchInFlight.LoadOrStore(cacheKey, struct{}{}); !loaded {
+					log.Infof("[%s] ristretto cache prefetch trigger: province=%s isp=%s qtype=%d remaining=%s", qname, province, isp, qtype, remaining.Round(time.Millisecond))
+					rForPrefetch := r.Copy()
+					go e.prefetchCache(rForPrefetch, cacheKey, province, isp, qname, w.LocalAddr(), w.RemoteAddr())
+				} else {
+					log.Infof("[%s] ristretto cache hit (prefetch in-flight): province=%s isp=%s qtype=%d", qname, province, isp, qtype)
+				}
+			}
 			log.Infof("[%s] ristretto cache hit: province=%s isp=%s qtype=%d", qname, province, isp, qtype)
 			resp := cr.msg.Copy()
 			resp.Id = r.Id
@@ -127,4 +143,52 @@ func (e *ECSNormalizer) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *d
 		w.WriteMsg(rec.Msg)
 	}
 	return rcode, nil
+}
+
+func (e *ECSNormalizer) prefetchCache(r *dns.Msg, cacheKey, province, isp, qname string, localAddr, remoteAddr net.Addr) {
+	defer e.prefetchInFlight.Delete(cacheKey)
+
+	subnetVal, ok := e.subnetMap.Load(province + "|" + isp)
+	if !ok {
+		log.Warningf("[%s] prefetch skipped: no subnet mapping for province=%s isp=%s", qname, province, isp)
+		return
+	}
+	subnet := subnetVal.(string)
+	if err := injectECS(r, subnet, e.cfg.PrefixLength); err != nil {
+		log.Warningf("[%s] prefetch inject ECS failed (subnet=%s): %v", qname, subnet, err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pw := &prefetchWriter{localAddr: localAddr, remoteAddr: remoteAddr}
+	rcode, err := plugin.NextOrFailure(e.Name(), e.Next, ctx, pw, r)
+	if err != nil {
+		log.Warningf("[%s] prefetch downstream query failed: %v", qname, err)
+		return
+	}
+	if rcode != dns.RcodeSuccess {
+		log.Warningf("[%s] prefetch downstream rcode=%d", qname, rcode)
+		return
+	}
+
+	msg := pw.Msg()
+	if msg == nil || len(msg.Answer) == 0 {
+		log.Debugf("[%s] prefetch no answer, skip cache refresh", qname)
+		return
+	}
+	ttl := getMinTTL(msg)
+	if ttl == 0 {
+		return
+	}
+
+	cr := &cachedResponse{
+		msg:       msg.Copy(),
+		expiresAt: time.Now().Add(time.Duration(ttl) * time.Second),
+	}
+	packed, _ := msg.Pack()
+	if e.dnsCache.Set(cacheKey, cr, int64(len(packed))) {
+		log.Infof("[%s] ristretto cache prefetch write: province=%s isp=%s ttl=%d", qname, province, isp, ttl)
+	}
 }

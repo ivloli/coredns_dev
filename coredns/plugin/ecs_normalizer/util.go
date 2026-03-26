@@ -3,22 +3,23 @@ package ecs_normalizer
 import (
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
 )
 
-// extractClientIP returns the IP to use for region lookup.
+// extractClientIP returns the IP to use for region lookup and whether it came from ECS.
 // Priority: ECS source address > connection remote IP.
-func extractClientIP(state request.Request, r *dns.Msg) string {
+func extractClientIP(state request.Request, r *dns.Msg) (ip string, fromECS bool) {
 	if opt := r.IsEdns0(); opt != nil {
 		for _, o := range opt.Option {
 			if ecs, ok := o.(*dns.EDNS0_SUBNET); ok && ecs.Address != nil {
-				return ecs.Address.String()
+				return ecs.Address.String(), true
 			}
 		}
 	}
-	return state.IP()
+	return state.IP(), false
 }
 
 // injectECS sets (or replaces) the EDNS0_SUBNET option in r with the given subnet.
@@ -114,4 +115,52 @@ func getMinTTL(msg *dns.Msg) uint32 {
 		}
 	}
 	return min
+}
+
+type prefetchWriter struct {
+	localAddr  net.Addr
+	remoteAddr net.Addr
+
+	mu  sync.RWMutex
+	msg *dns.Msg
+}
+
+func (w *prefetchWriter) LocalAddr() net.Addr {
+	return w.localAddr
+}
+
+func (w *prefetchWriter) RemoteAddr() net.Addr {
+	return w.remoteAddr
+}
+
+func (w *prefetchWriter) WriteMsg(m *dns.Msg) error {
+	w.mu.Lock()
+	w.msg = m.Copy()
+	w.mu.Unlock()
+	return nil
+}
+
+func (w *prefetchWriter) Write(b []byte) (int, error) {
+	return len(b), nil
+}
+
+func (w *prefetchWriter) Close() error {
+	return nil
+}
+
+func (w *prefetchWriter) TsigStatus() error {
+	return nil
+}
+
+func (w *prefetchWriter) TsigTimersOnly(bool) {}
+
+func (w *prefetchWriter) Hijack() {}
+
+func (w *prefetchWriter) Msg() *dns.Msg {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if w.msg == nil {
+		return nil
+	}
+	return w.msg.Copy()
 }
