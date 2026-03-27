@@ -3,6 +3,7 @@ package ecs_normalizer
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/coredns/caddy"
@@ -30,6 +31,8 @@ type Config struct {
 	NacosPassword      string
 	PrefixLength       uint8
 	CachePrefetchAhead time.Duration
+	CachePrefetchMode  string
+	CachePrefetchScan  time.Duration
 }
 
 func setup(c *caddy.Controller) error {
@@ -73,11 +76,12 @@ func setup(c *caddy.Controller) error {
 		return plugin.Error("ecs_normalizer", fmt.Errorf("load subnet map from nacos: %w", err))
 	}
 	e.startNacosListener(nacosClient)
-	log.Infof("ecs_normalizer ready: nacos=%s ns=%q group=%s data_id=%s prefix_len=/%d prefetch_ahead=%s",
-		cfg.NacosAddr, cfg.NacosNamespace, cfg.NacosGroup, cfg.NacosDataID, cfg.PrefixLength, cfg.CachePrefetchAhead)
+	log.Infof("ecs_normalizer ready: nacos=%s ns=%q group=%s data_id=%s prefix_len=/%d prefetch_mode=%s prefetch_ahead=%s prefetch_scan=%s",
+		cfg.NacosAddr, cfg.NacosNamespace, cfg.NacosGroup, cfg.NacosDataID, cfg.PrefixLength, cfg.CachePrefetchMode, cfg.CachePrefetchAhead, cfg.CachePrefetchScan)
 
 	dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
 		e.Next = next
+		e.startActivePrefetchLoop()
 		return e
 	})
 	return nil
@@ -89,6 +93,8 @@ func parseConfig(c *caddy.Controller) (*Config, error) {
 		NacosDataID:        "subnet_map",
 		PrefixLength:       24,
 		CachePrefetchAhead: 5 * time.Second,
+		CachePrefetchMode:  "request",
+		CachePrefetchScan:  1 * time.Second,
 	}
 	for c.Next() {
 		for c.NextBlock() {
@@ -149,6 +155,27 @@ func parseConfig(c *caddy.Controller) (*Config, error) {
 					return nil, fmt.Errorf("cache_prefetch_ahead must be >= 0")
 				}
 				cfg.CachePrefetchAhead = d
+			case "cache_prefetch_mode":
+				if !c.NextArg() {
+					return nil, c.ArgErr()
+				}
+				mode := strings.ToLower(c.Val())
+				if mode != "request" && mode != "active" {
+					return nil, fmt.Errorf("invalid cache_prefetch_mode %q: must be request|active", c.Val())
+				}
+				cfg.CachePrefetchMode = mode
+			case "cache_prefetch_scan":
+				if !c.NextArg() {
+					return nil, c.ArgErr()
+				}
+				d, err := time.ParseDuration(c.Val())
+				if err != nil {
+					return nil, fmt.Errorf("invalid cache_prefetch_scan %q: %w", c.Val(), err)
+				}
+				if d <= 0 {
+					return nil, fmt.Errorf("cache_prefetch_scan must be > 0")
+				}
+				cfg.CachePrefetchScan = d
 			default:
 				return nil, c.Errf("unknown option %q", c.Val())
 			}
