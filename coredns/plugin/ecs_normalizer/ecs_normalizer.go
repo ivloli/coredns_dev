@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coredns/coredns/plugin"
@@ -37,6 +38,7 @@ type ECSNormalizer struct {
 	prefetchInFlight   sync.Map         // cacheKey -> struct{} (dedupe prefetch refresh)
 	cacheIndex         sync.Map         // cacheKey -> *cachedResponse (for active prefetch scan)
 	activePrefetchOnce sync.Once
+	lastRejectWarnUnix atomic.Int64
 }
 
 type cachedResponse struct {
@@ -85,7 +87,7 @@ func (e *ECSNormalizer) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *d
 
 	// 3. Check DNS response cache.
 	qtype := r.Question[0].Qtype
-	cacheKey := fmt.Sprintf("%s|%s|%s|%d", province, isp, qname, qtype)
+	cacheKey := cacheKeyFromMeta(province, isp, qname, qtype)
 
 	if val, ok := e.dnsCache.Get(cacheKey); ok {
 		if cr, ok := val.(*cachedResponse); ok {
@@ -215,6 +217,41 @@ func (e *ECSNormalizer) writeCache(cacheKey string, cr *cachedResponse, source s
 		ttl := uint32(time.Until(cr.expiresAt).Seconds())
 		log.Infof("[%s] ristretto cache %s write: province=%s isp=%s qtype=%d ttl=%d", cr.qname, source, cr.province, cr.isp, cr.qtype, ttl)
 	}
+}
+
+func cacheKeyFromMeta(province, isp, qname string, qtype uint16) string {
+	return fmt.Sprintf("%s|%s|%s|%d", province, isp, qname, qtype)
+}
+
+func cacheKeyFromCachedResponse(cr *cachedResponse) string {
+	if cr == nil {
+		return ""
+	}
+	return cacheKeyFromMeta(cr.province, cr.isp, cr.qname, cr.qtype)
+}
+
+func (e *ECSNormalizer) onCacheEvict(item *ristretto.Item) {
+	cr, ok := item.Value.(*cachedResponse)
+	if !ok || cr == nil {
+		return
+	}
+	cacheKey := cacheKeyFromCachedResponse(cr)
+	if cacheKey != "" {
+		e.cacheIndex.Delete(cacheKey)
+	}
+}
+
+func (e *ECSNormalizer) onCacheReject(item *ristretto.Item) {
+	const warnInterval = int64(30 * time.Second)
+	now := time.Now().UnixNano()
+	last := e.lastRejectWarnUnix.Load()
+	if now-last < warnInterval {
+		return
+	}
+	if !e.lastRejectWarnUnix.CompareAndSwap(last, now) {
+		return
+	}
+	log.Warningf("ristretto cache under memory pressure: write rejected (cost=%d, max_cost=%d). consider increasing cache_max_cost_mb", item.Cost, e.cfg.CacheMaxCostMB<<20)
 }
 
 func (e *ECSNormalizer) startActivePrefetchLoop() {
