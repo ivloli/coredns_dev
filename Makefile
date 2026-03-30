@@ -2,10 +2,12 @@
         install install-coredns install-subnet-manager \
         uninstall uninstall-coredns uninstall-subnet-manager \
         start stop restart status \
+        coredns-multi-enable coredns-multi-start coredns-multi-stop coredns-multi-restart coredns-multi-status coredns-multi-switch \
         docker-up docker-down clean tidy
 
 COREDNS_BIN    := bin/coredns-ecs
 SUBNET_MGR_BIN := bin/subnet-manager
+COREDNS_INSTANCES ?= instance1 instance2
 
 all: build-coredns build-subnet-manager
 
@@ -28,6 +30,11 @@ install-coredns:
 	[ -f /etc/coredns-ecs/Corefile ] || \
 	    install -m 644 coredns/Corefile.prod /etc/coredns-ecs/Corefile
 	install -m 644 coredns/coredns-ecs.service /etc/systemd/system/coredns-ecs.service
+	install -m 644 coredns/coredns-ecs@.service /etc/systemd/system/coredns-ecs@.service
+	for i in $(COREDNS_INSTANCES); do \
+		install -d -m 755 /etc/coredns-ecs/$$i; \
+		[ -f /etc/coredns-ecs/$$i/Corefile ] || install -m 644 coredns/Corefile.prod /etc/coredns-ecs/$$i/Corefile; \
+	done
 	systemctl daemon-reload
 	systemctl enable coredns-ecs
 	@echo "coredns-ecs 安装完成，请确认 /etc/coredns-ecs/Corefile 后执行: systemctl start coredns-ecs"
@@ -53,7 +60,9 @@ install: install-coredns install-subnet-manager
 uninstall-coredns:
 	systemctl stop coredns-ecs 2>/dev/null || true
 	systemctl disable coredns-ecs 2>/dev/null || true
-	rm -f /etc/systemd/system/coredns-ecs.service /usr/local/bin/coredns-ecs
+	for i in $(COREDNS_INSTANCES); do systemctl stop coredns-ecs@$$i 2>/dev/null || true; done
+	for i in $(COREDNS_INSTANCES); do systemctl disable coredns-ecs@$$i 2>/dev/null || true; done
+	rm -f /etc/systemd/system/coredns-ecs.service /etc/systemd/system/coredns-ecs@.service /usr/local/bin/coredns-ecs
 	systemctl daemon-reload
 
 uninstall-subnet-manager:
@@ -66,16 +75,43 @@ uninstall: uninstall-coredns uninstall-subnet-manager
 
 # ── 服务控制（两个同时操作）────────────────────────────────
 start:
-	systemctl start subnet-manager coredns
+	systemctl start subnet-manager coredns-ecs
 
 stop:
-	systemctl stop coredns subnet-manager
+	systemctl stop coredns-ecs subnet-manager
 
 restart:
-	systemctl restart coredns subnet-manager
+	systemctl restart coredns-ecs subnet-manager
 
 status:
-	systemctl status coredns subnet-manager
+	systemctl status coredns-ecs subnet-manager
+
+# ── CoreDNS 多实例控制（systemd template: coredns-ecs@.service）────
+coredns-multi-enable:
+	systemctl daemon-reload
+	for i in $(COREDNS_INSTANCES); do systemctl enable coredns-ecs@$$i; done
+	@echo "Enabled coredns-ecs instances: $(COREDNS_INSTANCES)"
+
+coredns-multi-start:
+	for i in $(COREDNS_INSTANCES); do systemctl start coredns-ecs@$$i; done
+	@echo "Started coredns-ecs instances: $(COREDNS_INSTANCES)"
+
+coredns-multi-stop:
+	for i in $(COREDNS_INSTANCES); do systemctl stop coredns-ecs@$$i; done
+
+coredns-multi-restart:
+	for i in $(COREDNS_INSTANCES); do systemctl restart coredns-ecs@$$i; done
+
+coredns-multi-status:
+	for i in $(COREDNS_INSTANCES); do systemctl status coredns-ecs@$$i; done
+
+coredns-multi-switch:
+	systemctl stop coredns-ecs 2>/dev/null || true
+	systemctl disable coredns-ecs 2>/dev/null || true
+	for i in $(COREDNS_INSTANCES); do systemctl stop coredns@$$i 2>/dev/null || true; done
+	for i in $(COREDNS_INSTANCES); do systemctl disable coredns@$$i 2>/dev/null || true; done
+	$(MAKE) coredns-multi-enable
+	$(MAKE) coredns-multi-start
 
 docker-up:
 	docker-compose up -d
