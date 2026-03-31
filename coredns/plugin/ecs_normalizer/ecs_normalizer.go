@@ -46,6 +46,7 @@ type cachedResponse struct {
 	expiresAt time.Time
 	province  string
 	isp       string
+	subnet    string
 	qname     string
 	qtype     uint16
 }
@@ -146,6 +147,7 @@ func (e *ECSNormalizer) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *d
 					expiresAt: time.Now().Add(time.Duration(ttl) * time.Second),
 					province:  province,
 					isp:       isp,
+					subnet:    subnet,
 					qname:     qname,
 					qtype:     qtype,
 				}
@@ -204,6 +206,7 @@ func (e *ECSNormalizer) prefetchCache(cacheKey, province, isp, qname string, qty
 		expiresAt: time.Now().Add(time.Duration(ttl) * time.Second),
 		province:  province,
 		isp:       isp,
+		subnet:    subnet,
 		qname:     qname,
 		qtype:     qtype,
 	}
@@ -215,7 +218,7 @@ func (e *ECSNormalizer) writeCache(cacheKey string, cr *cachedResponse, source s
 	if e.dnsCache.Set(cacheKey, cr, int64(len(packed))) {
 		e.cacheIndex.Store(cacheKey, cr)
 		ttl := uint32(time.Until(cr.expiresAt).Seconds())
-		log.Infof("[%s] ristretto cache %s write: province=%s isp=%s qtype=%d ttl=%d", cr.qname, source, cr.province, cr.isp, cr.qtype, ttl)
+		log.Infof("[%s] ristretto cache %s write: province=%s isp=%s subnet=%s qtype=%d ttl=%d", cr.qname, source, cr.province, cr.isp, cr.subnet, cr.qtype, ttl)
 	}
 }
 
