@@ -1,6 +1,6 @@
 . {
     ecs_normalizer {
-        ip2region_db  /var/lib/subnet-manager/ip2region/ip2region_v4.xdb
+        ip2region_db  /var/lib/coredns-ecs/ip2region/ip2region_v4.xdb
         nacos_addr    172.31.32.200:8848
         nacos_namespace probe-dev
         nacos_group   subnet_mapping
