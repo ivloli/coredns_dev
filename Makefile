@@ -1,6 +1,6 @@
-.PHONY: all build-coredns build-subnet-manager build-dnsdist-cert-sync build-cert-publisher \
-        install install-coredns install-subnet-manager install-dnsdist-cert-sync install-cert-publisher \
-        uninstall uninstall-coredns uninstall-subnet-manager uninstall-dnsdist-cert-sync uninstall-cert-publisher \
+.PHONY: all build-coredns build-subnet-manager build-cert-publisher \
+        install install-coredns install-subnet-manager install-cert-publisher \
+        uninstall uninstall-coredns uninstall-subnet-manager uninstall-cert-publisher \
         start stop restart status \
         coredns-multi-enable coredns-multi-start coredns-multi-stop coredns-multi-restart coredns-multi-status coredns-multi-switch \
         docker-up docker-down clean tidy \
@@ -9,7 +9,6 @@
 
 COREDNS_BIN    := bin/coredns-ecs
 SUBNET_MGR_BIN := bin/subnet-manager
-DNSDIST_CERT_SYNC_BIN := bin/dnsdist-cert-sync
 CERT_PUBLISHER_BIN := bin/cert-publisher
 COREDNS_INSTANCES ?= instance1 instance2
 PROD_DEPLOY_DIR ?= production-deploy
@@ -30,7 +29,7 @@ IP2REGION_XDB_MIN_BYTES ?= 1000000
 PROD_BUILD_GOOS ?= linux
 PROD_BUILD_GOARCH ?= amd64
 
-all: build-coredns build-subnet-manager build-dnsdist-cert-sync build-cert-publisher
+all: build-coredns build-subnet-manager build-cert-publisher
 
 prepare-prod-dir:
 	install -d -m 755 $(PROD_BIN_DIR)
@@ -112,10 +111,6 @@ build-subnet-manager:
 	cd subnet-manager && GOWORK=off go build -o ../$(SUBNET_MGR_BIN) .
 	@echo "Built $(SUBNET_MGR_BIN)"
 
-build-dnsdist-cert-sync:
-	cd dnsdist-cert-sync && go build -o ../$(DNSDIST_CERT_SYNC_BIN) .
-	@echo "Built $(DNSDIST_CERT_SYNC_BIN)"
-
 build-cert-publisher:
 	cd cert-publisher && go build -o ../$(CERT_PUBLISHER_BIN) .
 	@echo "Built $(CERT_PUBLISHER_BIN)"
@@ -123,7 +118,6 @@ build-cert-publisher:
 tidy:
 	cd coredns && go mod tidy
 	cd subnet-manager && go mod tidy
-	cd dnsdist-cert-sync && go mod tidy
 	cd cert-publisher && go mod tidy
 
 # ── 安装 CoreDNS ────────────────────────────────────────────
@@ -175,19 +169,6 @@ install-subnet-manager:
 	systemctl enable subnet-manager
 	@echo "subnet-manager 安装完成，请确认 /etc/subnet-manager/config.yaml 后执行: systemctl start subnet-manager"
 
-# ── 安装 dnsdist-cert-sync ──────────────────────────────────
-install-dnsdist-cert-sync:
-	install -m 755 $(DNSDIST_CERT_SYNC_BIN) /usr/local/bin/dnsdist-cert-sync
-	install -d -m 755 /etc/dnsdist-cert-sync
-	[ -f /etc/dnsdist-cert-sync/config.yaml ] || \
-	    install -m 644 dnsdist-cert-sync/config.prod.yaml /etc/dnsdist-cert-sync/config.yaml
-	[ -f /etc/dnsdist-cert-sync/env ] || \
-	    install -m 600 /dev/null /etc/dnsdist-cert-sync/env
-	install -m 644 dnsdist-cert-sync/dnsdist-cert-sync.service /etc/systemd/system/dnsdist-cert-sync.service
-	systemctl daemon-reload
-	systemctl enable dnsdist-cert-sync
-	@echo "dnsdist-cert-sync 安装完成，请确认 /etc/dnsdist-cert-sync/config.yaml 和 env 后执行: systemctl start dnsdist-cert-sync"
-
 # ── 安装 cert-publisher ───────────────────────────────────
 install-cert-publisher:
 	install -m 755 $(CERT_PUBLISHER_BIN) /usr/local/bin/cert-publisher
@@ -202,7 +183,7 @@ install-cert-publisher:
 	@echo "cert-publisher 安装完成，请确认 /etc/cert-publisher/config.yaml 和 env 后执行: systemctl start cert-publisher"
 
 # ── 一键安装两个服务 ────────────────────────────────────────
-install: install-coredns install-subnet-manager install-dnsdist-cert-sync install-cert-publisher
+install: install-coredns install-subnet-manager install-cert-publisher
 
 # ── 卸载（不删除配置和数据目录）───────────────────────────
 uninstall-coredns:
@@ -219,19 +200,13 @@ uninstall-subnet-manager:
 	rm -f /etc/systemd/system/subnet-manager.service /usr/local/bin/subnet-manager
 	systemctl daemon-reload
 
-uninstall-dnsdist-cert-sync:
-	systemctl stop dnsdist-cert-sync 2>/dev/null || true
-	systemctl disable dnsdist-cert-sync 2>/dev/null || true
-	rm -f /etc/systemd/system/dnsdist-cert-sync.service /usr/local/bin/dnsdist-cert-sync
-	systemctl daemon-reload
-
 uninstall-cert-publisher:
 	systemctl stop cert-publisher 2>/dev/null || true
 	systemctl disable cert-publisher 2>/dev/null || true
 	rm -f /etc/systemd/system/cert-publisher.service /usr/local/bin/cert-publisher
 	systemctl daemon-reload
 
-uninstall: uninstall-coredns uninstall-subnet-manager uninstall-dnsdist-cert-sync uninstall-cert-publisher
+uninstall: uninstall-coredns uninstall-subnet-manager uninstall-cert-publisher
 
 # ── 服务控制（两个同时操作）────────────────────────────────
 start:
