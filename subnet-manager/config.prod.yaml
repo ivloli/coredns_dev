@@ -1,10 +1,10 @@
 nacos:
-  addr:      "172.31.32.200:8848"
-  namespace: ""
+  addr:      "139.159.195.20:8848"
+  namespace: "scloud-prod"
   group:     "subnet_mapping"
   data_id:   "subnet_map"
-  username:  "${NACOS_USERNAME}"
-  password:  "${NACOS_PASSWORD}"
+  username:  "scloud-admin"
+  password:  "2a958ec104323d2a9374675154d1a4fc"
 
 ip2region:
   dir:           "/var/lib/subnet-manager/ip2region"
